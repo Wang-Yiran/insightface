@@ -100,7 +100,8 @@ def parse_args():
 def main():
     args = parse_args()
     logger.info('Called with argument: %s' % args)
-    ctx = mx.gpu(args.gpu)
+    # ctx = mx.gpu(args.gpu)
+    ctx = mx.gpu(args.gpu) if mx.context.num_gpus() else mx.cpu(args.gpu)
     test_rcnn(args.network, args.dataset, args.image_set, args.root_path, args.dataset_path,
               ctx, args.prefix, args.epoch,
               args.vis, args.shuffle, args.has_rpn, args.proposal, args.thresh)

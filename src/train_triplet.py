@@ -16,24 +16,24 @@ from mxnet import ndarray as nd
 import argparse
 import mxnet.optimizer as optimizer
 sys.path.append(os.path.join(os.path.dirname(__file__), 'common'))
-import face_image
-from noise_sgd import NoiseSGD
+from common import face_image
+from common.noise_sgd import NoiseSGD
 sys.path.append(os.path.join(os.path.dirname(__file__), 'eval'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'symbols'))
-import fresnet
-import finception_resnet_v2
-import fmobilenet 
-import fmobilenetv2
-import fxception
-import fdensenet
-import fdpn
-import fnasnet
-import spherenet
+from symbols import fresnet
+from symbols import finception_resnet_v2
+from symbols import fmobilenet
+from symbols import fmobilenetv2
+from symbols import fxception
+from symbols import fdensenet
+from symbols import fdpn
+from symbols import fnasnet
+from symbols import spherenet
 #import lfw
-import verification
+from eval import verification
 import sklearn
 sys.path.append(os.path.join(os.path.dirname(__file__), 'losses'))
-import center_loss
+from losses import center_loss
 
 
 logger = logging.getLogger()
@@ -174,7 +174,8 @@ def train_net(args):
     ctx = []
     cvd = os.environ['CUDA_VISIBLE_DEVICES'].strip()
     if len(cvd)>0:
-      for i in xrange(len(cvd.split(','))):
+      # for i in xrange(len(cvd.split(','))):
+      for i in range(len(cvd.split(','))):
         ctx.append(mx.gpu(i))
     if len(ctx)==0:
       ctx = [mx.cpu()]
@@ -300,7 +301,8 @@ def train_net(args):
 
     def ver_test(nbatch):
       results = []
-      for i in xrange(len(ver_list)):
+      # for i in xrange(len(ver_list)):
+      for i in range(len(ver_list)):
         acc1, std1, acc2, std2, xnorm, embeddings_list = verification.test(ver_list[i], model, args.batch_size, 10, None, label_shape)
         print('[%s][%d]XNorm: %f' % (ver_name_list[i], nbatch, xnorm))
         #print('[%s][%d]Accuracy: %1.5f+-%1.5f' % (ver_name_list[i], nbatch, acc1, std1))

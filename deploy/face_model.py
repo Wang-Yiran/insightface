@@ -15,10 +15,10 @@ import sklearn
 from sklearn.decomposition import PCA
 from time import sleep
 from easydict import EasyDict as edict
-from mtcnn_detector import MtcnnDetector
+from .mtcnn_detector import MtcnnDetector
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'common'))
-import face_image
-import face_preprocess
+from common import face_image
+from common import face_preprocess
 
 
 def do_flip(data):
@@ -43,7 +43,8 @@ def get_model(ctx, image_size, model_str, layer):
 class FaceModel:
   def __init__(self, args):
     self.args = args
-    ctx = mx.gpu(args.gpu)
+    # ctx = mx.gpu(args.gpu)
+    ctx = mx.gpu(args.gpu) if mx.context.num_gpus() else mx.cpu(args.gpu)
     _vec = args.image_size.split(',')
     assert len(_vec)==2
     image_size = (int(_vec[0]), int(_vec[1]))
@@ -87,8 +88,55 @@ class FaceModel:
     input_blob = np.expand_dims(aligned, axis=0)
     data = mx.nd.array(input_blob)
     db = mx.io.DataBatch(data=(data,))
+    ''' forward()
+    正向计算。 它支持具有不同形状的数据批处理，例如
+         不同的批次大小或不同的图像大小。
+         如果数据批处理的重塑与符号或模块的修改有关，例如
+         更改图像布局顺序或从训练切换到预测模块
+         需要重新绑定。
+
+         也可以看看
+         ----------
+         BaseModule.forward。
+
+         参量
+         ----------
+         data_batch：DataBatch
+             可以是任何已实现类似API的东西。
+         is_train：布尔
+             默认值为“无”，这意味着“ is_train”采用“ self.for_training”的值。
+'''
     self.model.forward(db, is_train=False)
+    '''
+    获取先前正向计算的输出。
+
+         如果“ merge_multi_context”为“ True”，则类似于“ [out1，out2]”。 否则
+         就像``[[[out1_dev1，out1_dev2]，[out2_dev1，out2_dev2]]''） 全部输出
+         元素是`NDArray`。 当`merge_multi_context`为`False`时，那些`NDArray`
+         可能生活在不同的设备上。
+
+         参量
+         ----------
+         merge_multi_context：布尔
+             默认为``True''。 如果使用数据并行，则输出
+             将从多个设备中收集。 True值表示我们
+             应该合并收集的结果，以便它们看起来像一个
+             执行者。
+
+         退货
+         -------
+         NDArray列表或NDArray列表列表
+             输出。
+'''
     embedding = self.model.get_outputs()[0].asnumpy()
+    '''
+    正则化的过程是将每个样本缩放到单位范数（每个样本的范数为1），如果后面要使用如二次型（点积）或者其它核方法计算两个样本之间的相似性这个方法会很有用。
+
+Normalization主要思想是对每个样本计算其p-范数，然后对该样本中每个元素除以该范数，这样处理的结果是使得每个处理后样本的p-范数（l1-norm,l2-norm）等于1。
+
+             p-范数的计算公式：||X||p=(|x1|^p+|x2|^p+...+|xn|^p)^1/p
+该方法主要应用于文本分类和聚类中。例如，对于两个TF-IDF向量的l2-norm进行点积，就可以得到这两个向量的余弦相似性。
+    '''
     embedding = sklearn.preprocessing.normalize(embedding).flatten()
     return embedding
 

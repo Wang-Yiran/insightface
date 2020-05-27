@@ -81,7 +81,8 @@ def get_feature_set(name, vid, args):
 
 def main(args):
   global model
-  ctx = mx.gpu(args.gpu)
+  # ctx = mx.gpu(args.gpu)
+  ctx = mx.gpu(args.gpu) if mx.context.num_gpus() else mx.cpu(args.gpu)
   args.ctx_num = 1
   print('image_size', image_size)
   vec = args.model.split(',')
@@ -205,7 +206,8 @@ def main(args):
 
 def main2(args):
   global model
-  ctx = mx.gpu(args.gpu)
+  # ctx = mx.gpu(args.gpu)
+  ctx = mx.gpu(args.gpu) if mx.context.num_gpus() else mx.cpu(args.gpu)
   args.ctx_num = 1
   print('image_size', image_size)
   vec = args.model.split(',')

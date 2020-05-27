@@ -44,7 +44,8 @@ class FaceModel:
   def __init__(self, args):
     self.args = args
     if args.gpu>=0:
-      ctx = mx.gpu(args.gpu)
+      # ctx = mx.gpu(args.gpu)
+      ctx = mx.gpu(args.gpu) if mx.context.num_gpus() else mx.cpu(args.gpu)
     else:
       ctx = mx.cpu()
     _vec = args.image_size.split(',')

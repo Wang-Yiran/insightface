@@ -15,10 +15,10 @@ import sklearn
 from sklearn.decomposition import PCA
 from time import sleep
 from easydict import EasyDict as edict
-from mtcnn_detector import MtcnnDetector
+from .mtcnn_detector import MtcnnDetector
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'common'))
-import face_image
-import face_preprocess
+from common import face_image
+from common import face_preprocess
 
 
 def do_flip(data):
@@ -43,7 +43,8 @@ class FaceModel:
     prefix = _vec[0]
     epoch = int(_vec[1])
     print('loading',prefix, epoch)
-    ctx = mx.gpu(args.gpu)
+    # ctx = mx.gpu(args.gpu)
+    ctx = mx.gpu(args.gpu) if mx.context.num_gpus() else mx.cpu(args.gpu)
     sym, arg_params, aux_params = mx.model.load_checkpoint(prefix, epoch)
     all_layers = sym.get_internals()
     sym = all_layers['fc1_output']

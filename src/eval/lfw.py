@@ -182,6 +182,7 @@ def get_paths(lfw_dir, pairs, file_ext):
     
     return path_list, issame_list
 
+
 def read_pairs(pairs_filename):
     pairs = []
     with open(pairs_filename, 'r') as f:
@@ -221,7 +222,8 @@ def test(lfw_set, mx_model, batch_size):
   issame_list = lfw_set[1]
   model = mx_model
   embeddings_list = []
-  for i in xrange( len(lfw_data_list) ):
+  for i in range( len(lfw_data_list) ):
+  # for i in xrange( len(lfw_data_list) ):
     lfw_data = lfw_data_list[i]
     embeddings = None
     ba = 0
@@ -256,7 +258,8 @@ def test(lfw_set, mx_model, batch_size):
   _xnorm = 0.0
   _xnorm_cnt = 0
   for embed in embeddings_list:
-    for i in xrange(embed.shape[0]):
+    for i in range(embed.shape[0]):
+    # for i in xrange(embed.shape[0]):
       _em = embed[i]
       _norm=np.linalg.norm(_em)
       #print(_em.shape, _norm)

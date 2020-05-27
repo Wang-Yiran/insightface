@@ -1,3 +1,4 @@
+#-*-coding:utf-8-*-
 """Helper for evaluation on the Labeled Faces in the Wild dataset 
 """
 
@@ -44,6 +45,7 @@ import mxnet as mx
 from mxnet import ndarray as nd
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'common'))
 import face_image
+import pdb
 
 
 class LFold:
@@ -60,29 +62,45 @@ class LFold:
 
 
 def calculate_roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_folds=10, pca = 0):
+    # thresholds: np.arange(0, 4, 0.01)
+    # embeddings1:(6000L, 512L)
+    # embeddings2:(6000L, 512L)
+    # actual_issame:len(actual_issame)==6000
+    
     assert(embeddings1.shape[0] == embeddings2.shape[0])
     assert(embeddings1.shape[1] == embeddings2.shape[1])
-    nrof_pairs = min(len(actual_issame), embeddings1.shape[0])
-    nrof_thresholds = len(thresholds)
+
+    nrof_pairs = min(len(actual_issame), embeddings1.shape[0]) #6000L
+
+    nrof_thresholds = len(thresholds) #400L
     k_fold = LFold(n_splits=nrof_folds, shuffle=False)
     
-    tprs = np.zeros((nrof_folds,nrof_thresholds))
-    fprs = np.zeros((nrof_folds,nrof_thresholds))
-    accuracy = np.zeros((nrof_folds))
-    indices = np.arange(nrof_pairs)
-    #print('pca', pca)
+    tprs = np.zeros((nrof_folds,nrof_thresholds)) #(10L,400L)
+    fprs = np.zeros((nrof_folds,nrof_thresholds)) #(10L,400L)
+    accuracy = np.zeros((nrof_folds)) #(10L,)
+    indices = np.arange(nrof_pairs) #np.arange(6000)
+
     
     if pca==0:
-      diff = np.subtract(embeddings1, embeddings2)
-      dist = np.sum(np.square(diff),1)
-    
-    for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
+      # 求欧氏距离平方
+      diff = np.subtract(embeddings1, embeddings2) #(6000L,512L)
+      dist = np.sum(np.square(diff),1) #(6000L,)
+
+    # A = k_fold.split(indices)
+    # for _ in range(10):
+    #   B = A.next()
+    #   print(len(B[0]))
+    #   print(len(B[1]))
+    #   print
+    # sys.exit()
+
+    for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)): #k_fold.split(indices): 可next10次的生成器
         #print('train_set', train_set)
         #print('test_set', test_set)
         if pca>0:
           print('doing pca on', fold_idx)
-          embed1_train = embeddings1[train_set]
-          embed2_train = embeddings2[train_set]
+          embed1_train = embeddings1[train_set] #选择5400个作为训练集
+          embed2_train = embeddings2[train_set] #选择5400个作为训练集
           _embed_train = np.concatenate( (embed1_train, embed2_train), axis=0 )
           #print(_embed_train.shape)
           pca_model = PCA(n_components=pca)
@@ -95,52 +113,83 @@ def calculate_roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_fold
           diff = np.subtract(embed1, embed2)
           dist = np.sum(np.square(diff),1)
         
-        # Find the best threshold for the fold
-        acc_train = np.zeros((nrof_thresholds))
+        # 遍历thresholds, 发现fold最好的threshold
+        acc_train = np.zeros((nrof_thresholds)) #(400L,)
         for threshold_idx, threshold in enumerate(thresholds):
             _, _, acc_train[threshold_idx] = calculate_accuracy(threshold, dist[train_set], actual_issame[train_set])
+
         best_threshold_index = np.argmax(acc_train)
-        #print('threshold', thresholds[best_threshold_index])
+
+
         for threshold_idx, threshold in enumerate(thresholds):
             tprs[fold_idx,threshold_idx], fprs[fold_idx,threshold_idx], _ = calculate_accuracy(threshold, dist[test_set], actual_issame[test_set])
+        
+        print(thresholds[best_threshold_index])
+        with open('result_com.txt', 'a') as f:
+            f.writelines(str(thresholds[best_threshold_index]))
+            f.writelines('\n')
         _, _, accuracy[fold_idx] = calculate_accuracy(thresholds[best_threshold_index], dist[test_set], actual_issame[test_set])
-          
+
+    # print(accuracy)
+    # sys.exit()
+    
     tpr = np.mean(tprs,0)
     fpr = np.mean(fprs,0)
     return tpr, fpr, accuracy
 
 def calculate_accuracy(threshold, dist, actual_issame):
-    predict_issame = np.less(dist, threshold)
+    #
+    predict_issame = np.less(dist, threshold) # 前者小于后者时返回True,参见 np.info(np.less)
+
+    # True positive, False positive, True Negtive, False Negtive
     tp = np.sum(np.logical_and(predict_issame, actual_issame))
     fp = np.sum(np.logical_and(predict_issame, np.logical_not(actual_issame)))
     tn = np.sum(np.logical_and(np.logical_not(predict_issame), np.logical_not(actual_issame)))
     fn = np.sum(np.logical_and(np.logical_not(predict_issame), actual_issame))
-  
-    tpr = 0 if (tp+fn==0) else float(tp) / float(tp+fn)
-    fpr = 0 if (fp+tn==0) else float(fp) / float(fp+tn)
+
+
+    # print(tp)
+    # print(fp)
+    # print(tn)
+    # print(fn)
+    # print(dist.size)
+    # sys.exit()
+
+    tpr = 0 if (tp+fn==0) else float(tp) / float(tp+fn) #查准率tr
+    fpr = 0 if (fp+tn==0) else float(fp) / float(fp+tn) #假正例率
     acc = float(tp+tn)/dist.size
     return tpr, fpr, acc
 
 
   
 def calculate_val(thresholds, embeddings1, embeddings2, actual_issame, far_target, nrof_folds=10):
+    # thresholds: np.arange(0, 4, 0.001)
+    # embeddings1: (6000L, 512L)
+    # embeddings2: (6000L, 512L)
+    # actual_issame: (6000L,)
+    # far_target: 0.001
+
     assert(embeddings1.shape[0] == embeddings2.shape[0])
     assert(embeddings1.shape[1] == embeddings2.shape[1])
-    nrof_pairs = min(len(actual_issame), embeddings1.shape[0])
-    nrof_thresholds = len(thresholds)
-    k_fold = LFold(n_splits=nrof_folds, shuffle=False)
+
+    nrof_pairs = min(len(actual_issame), embeddings1.shape[0]) #6000
+    nrof_thresholds = len(thresholds) #4000
+    k_fold = LFold(n_splits=nrof_folds, shuffle=True) #更改了
     
-    val = np.zeros(nrof_folds)
-    far = np.zeros(nrof_folds)
+    val = np.zeros(nrof_folds) #(10L,)
+    far = np.zeros(nrof_folds) #(10L,)
+    
     
     diff = np.subtract(embeddings1, embeddings2)
-    dist = np.sum(np.square(diff),1)
+    dist = np.sum(np.square(diff),1) # 欧氏距离平方
+
     indices = np.arange(nrof_pairs)
     
-    for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
-      
+    for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)): #next10次
+        # print(train_set)
+
         # Find the threshold that gives FAR = far_target
-        far_train = np.zeros(nrof_thresholds)
+        far_train = np.zeros(nrof_thresholds) #(4000L,)
         for threshold_idx, threshold in enumerate(thresholds):
             _, far_train[threshold_idx] = calculate_val_far(threshold, dist[train_set], actual_issame[train_set])
         if np.max(far_train)>=far_target:
@@ -158,79 +207,156 @@ def calculate_val(thresholds, embeddings1, embeddings2, actual_issame, far_targe
 
 
 def calculate_val_far(threshold, dist, actual_issame):
-    predict_issame = np.less(dist, threshold)
-    true_accept = np.sum(np.logical_and(predict_issame, actual_issame))
-    false_accept = np.sum(np.logical_and(predict_issame, np.logical_not(actual_issame)))
+    #threshold: scalar
+    # print(dist.shape)
+    # print(actual_issame.shape)
+    # print('*'*20)
+
+    predict_issame = np.less(dist, threshold) #小于阈值的都为True
+    true_accept = np.sum(np.logical_and(predict_issame, actual_issame)) #把对的预测对的的数量(把一样的图像预测为一样) #TP
+    false_accept = np.sum(np.logical_and(predict_issame, np.logical_not(actual_issame))) #把不一致的预测为一致, #FP
+    
+    # print(true_accept)
+    # print(false_accept)
+    # print('*'*20)
+    # print(threshold)
+    # if threshold == 3.99:
+    #     pdb.set_trace()
     n_same = np.sum(actual_issame)
     n_diff = np.sum(np.logical_not(actual_issame))
+    # print(actual_issame)
+    # sys.exit(0)
+
+    # print(n_same)
+    # print(n_diff)
+    # print('*'*20)
+
     #print(true_accept, false_accept)
     #print(n_same, n_diff)
-    val = float(true_accept) / float(n_same)
-    far = float(false_accept) / float(n_diff)
+    # pdb.set_trace()
+    if n_same == 0:
+        n_same = 1e-4
+
+    val = float(true_accept) / float(n_same)    #TP/所有正例,即TPR
+    if n_diff == 0:
+        n_diff = 1e-4
+    far = float(false_accept) / float(n_diff)   #FP/所有反例,即FPR
+
     return val, far
 
 def evaluate(embeddings, actual_issame, nrof_folds=10, pca = 0):
+    # embeddings: (12000L, 512L)
+    # actual_issame: (6000L,)
+
     # Calculate evaluation metrics
-    thresholds = np.arange(0, 4, 0.01)
-    embeddings1 = embeddings[0::2]
-    embeddings2 = embeddings[1::2]
-    tpr, fpr, accuracy = calculate_roc(thresholds, embeddings1, embeddings2,
-        np.asarray(actual_issame), nrof_folds=nrof_folds, pca = pca)
     thresholds = np.arange(0, 4, 0.001)
-    val, val_std, far = calculate_val(thresholds, embeddings1, embeddings2,
-        np.asarray(actual_issame), 1e-3, nrof_folds=nrof_folds)
+    embeddings1 = embeddings[0::2] # 从0开始,隔一行取一个,如:0,2,4,...等,shape:(6000L, 512L)
+    embeddings2 = embeddings[1::2] # 从1开始,隔一行取一个,如:1,3,5,...等,shape:(6000L, 512L)
+    
+    # print(embeddings.shape)
+    # print(embeddings1.shape)
+    # print(embeddings2.shape)
+    # sys.exit()
+
+    tpr, fpr, accuracy = calculate_roc(thresholds, 
+                                       embeddings1, 
+                                       embeddings2,
+                                       np.asarray(actual_issame), 
+                                       nrof_folds=nrof_folds, 
+                                       pca = pca)
+    
+    thresholds = np.arange(0, 4, 0.001)
+
+    # val, val_std, far = 0,0,0
+    val, val_std, far = calculate_val(thresholds, 
+                                      embeddings1, 
+                                      embeddings2, 
+                                      np.asarray(actual_issame), 
+                                      1e-3, 
+                                      nrof_folds=nrof_folds)
+
+    with open('result.txt', 'a') as f:
+        f.writelines(str(accuracy))
+        f.writelines('\n')
     return tpr, fpr, accuracy, val, val_std, far
 
 def load_bin(path, image_size):
-  bins, issame_list = pickle.load(open(path, 'rb'))
+  # path为: ../datasets/faces_ms1m_112x112/lfw.bin
+  # image_size为: [112, 112]
+
+  bins, issame_list = pickle.load(open(path, 'rb')) #bins存储图片对数据,issame_list存储标签
+  # print(len(bins))
+  # sys.exit()
+  # print(issame_list)
+  # sys.exit()
+  # pdb.set_trace()
   data_list = []
-  for flip in [0,1]:
-    data = nd.empty((len(issame_list)*2, 3, image_size[0], image_size[1]))
+  for _ in [0,1]:
+    data = nd.empty((len(issame_list)*2, 3, image_size[0], image_size[1])) #(12000L, 3L, 112L, 112L)的NDArray
     data_list.append(data)
-  for i in range(len(issame_list)*2):
+
+  for i in range(len(issame_list)*2): #12000
     _bin = bins[i]
     img = mx.image.imdecode(_bin)
-    if img.shape[1]!=image_size[0]:
-      img = mx.image.resize_short(img, image_size[0])
     img = nd.transpose(img, axes=(2, 0, 1))
+
+
     for flip in [0,1]:
       if flip==1:
-        img = mx.ndarray.flip(data=img, axis=2)
+        img = mx.ndarray.flip(data=img, axis=2) #水平翻转
+
       data_list[flip][i][:] = img
-    if i%1000==0:
+    if i % 1000==0:
       print('loading bin', i)
-  print(data_list[0].shape)
+
+  # print(issame_list[0])
+  # sys.exit()
+  # data_list: 两个元素,每个元素为(12000L, 3L, 112L, 112L)的NDArray
+  # issame_list: 长度为6000的列表,每个元素为bool
   return (data_list, issame_list)
 
 def test(data_set, mx_model, batch_size, nfolds=10, data_extra = None, label_shape = None):
+  #data_set 存放数据和标签的元组
+  # print(mx_model)
+  # sys.exit(0)
+  # pdb.set_trace()
   print('testing verification..')
-  data_list = data_set[0]
-  issame_list = data_set[1]
+  data_list = data_set[0] # data_list: 两个元素,每个元素为(12000L, 3L, 112L, 112L)的NDArray
+  issame_list = data_set[1] #issame_list: 长度为6000的列表,每个元素为bool
   model = mx_model
   embeddings_list = []
   if data_extra is not None:
     _data_extra = nd.array(data_extra)
   time_consumed = 0.0
   if label_shape is None:
-    _label = nd.ones( (batch_size,) )
+    _label = nd.ones( (batch_size,) ) #(32L,)的 1
   else:
     _label = nd.ones( label_shape )
-  for i in range( len(data_list) ):
-    data = data_list[i]
+
+  # print(len(data_list))
+  # sys.exit(0)
+  # pdb.set_trace()
+  for i in range( len(data_list) ):#2
+    data = data_list[i] #(12000L, 3L, 112L, 112L)的NDArray
+
     embeddings = None
     ba = 0
-    while ba<data.shape[0]:
-      bb = min(ba+batch_size, data.shape[0])
-      count = bb-ba
-      _data = nd.slice_axis(data, axis=0, begin=bb-batch_size, end=bb)
-      #print(_data.shape, _label.shape)
+    while ba<data.shape[0]:#12000
+      bb = min(ba+batch_size, data.shape[0]) #32,64,96,128,160,192...
+      count = bb-ba #32,32,...
+
+      _data = nd.slice_axis(data, axis=0, begin=bb-batch_size, end=bb) #(32L, 3L, 112L, 112L)
+      # print(_data.shape, _label.shape)
       time0 = datetime.datetime.now()
       if data_extra is None:
         db = mx.io.DataBatch(data=(_data,), label=(_label,))
       else:
-        db = mx.io.DataBatch(data=(_data,_data_extra), label=(_label,))
+        db = mx.io.DataBatch(data=(_data,_data_extra), label=(_label,)) #DataBatch: data shapes: [(32L, 3L, 112L, 112L)] label shapes: [(32L,)]
+
       model.forward(db, is_train=False)
-      net_out = model.get_outputs()
+      net_out = model.get_outputs() #len(net_out)==1,其中的元素为(32L, 512L)的NDArray
+
+
       #_arg, _aux = model.get_params()
       #__arg = {}
       #for k,v in _arg.iteritems():
@@ -250,35 +376,35 @@ def test(data_set, mx_model, batch_size, nfolds=10, data_extra = None, label_sha
       #print(_embeddings.shape)
       if embeddings is None:
         embeddings = np.zeros( (data.shape[0], _embeddings.shape[1]) )
-      embeddings[ba:bb,:] = _embeddings[(batch_size-count):,:]
+      embeddings[ba:bb,:] = _embeddings[(batch_size-count):,:] #(12000, 512)
       ba = bb
-    embeddings_list.append(embeddings)
-
+    embeddings_list.append(embeddings) #循环执行完长度为2,保存imgs和imgs_flip
+  # pdb.set_trace()
   _xnorm = 0.0
   _xnorm_cnt = 0
   for embed in embeddings_list:
-    for i in range(embed.shape[0]):
-      _em = embed[i]
-      _norm=np.linalg.norm(_em)
-      #print(_em.shape, _norm)
+    for i in range(embed.shape[0]): #12000
+      _em = embed[i] #512
+      _norm=np.linalg.norm(_em) #元素平方加和开根号
+
       _xnorm+=_norm
       _xnorm_cnt+=1
+
   _xnorm /= _xnorm_cnt
 
-  embeddings = embeddings_list[0].copy()
-  embeddings = sklearn.preprocessing.normalize(embeddings)
   acc1 = 0.0
   std1 = 0.0
-  #_, _, accuracy, val, val_std, far = evaluate(embeddings, issame_list, nrof_folds=10)
-  #acc1, std1 = np.mean(accuracy), np.std(accuracy)
 
-  #print('Validation rate: %2.5f+-%2.5f @ FAR=%2.5f' % (val, val_std, far))
-  #embeddings = np.concatenate(embeddings_list, axis=1)
-  embeddings = embeddings_list[0] + embeddings_list[1]
-  embeddings = sklearn.preprocessing.normalize(embeddings)
-  print(embeddings.shape)
+  embeddings = embeddings_list[0] + embeddings_list[1] #两者element-wise元素加和,shape:(12000, 512)
+
+  #标准化
+  embeddings = sklearn.preprocessing.normalize(embeddings) #(12000, 512)
+
   print('infer time', time_consumed)
-  _, _, accuracy, val, val_std, far = evaluate(embeddings, issame_list, nrof_folds=nfolds)
+
+  #accuracy:(10L,),存放10折交叉验证的10次结果
+  _, _, accuracy, val, val_std, far = evaluate(embeddings, issame_list, nrof_folds=nfolds) 
+
   acc2, std2 = np.mean(accuracy), np.std(accuracy)
   return acc1, std1, acc2, std2, _xnorm, embeddings_list
 
@@ -345,8 +471,8 @@ def test_badcase(data_set, mx_model, batch_size, name='', data_extra = None, lab
   pouts = []
   nouts = []
   
-  for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
-       
+  for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)): 
+      
       # Find the best threshold for the fold
       acc_train = np.zeros((nrof_thresholds))
       #print(train_set)
@@ -511,29 +637,37 @@ if __name__ == '__main__':
   parser.add_argument('--model', default='../model/softmax,50', help='path to load model.')
   parser.add_argument('--target', default='lfw,cfp_ff,cfp_fp,agedb_30', help='test targets.')
   parser.add_argument('--gpu', default=0, type=int, help='gpu id')
-  parser.add_argument('--batch-size', default=32, type=int, help='')
+  parser.add_argument('--batch-size', default=1, type=int, help='')
   parser.add_argument('--max', default='', type=str, help='')
   parser.add_argument('--mode', default=0, type=int, help='')
   parser.add_argument('--nfolds', default=10, type=int, help='')
   args = parser.parse_args()
 
-  prop = face_image.load_property(args.data_dir)
-  image_size = prop.image_size
-  print('image_size', image_size)
-  # ctx = mx.gpu(args.gpu)
+  
+  prop = face_image.load_property(args.data_dir) #prop存放的是property文件的内容,easydict类
+
+  image_size = prop.image_size #112x112
+  
+  # ctx = mx.gpu(args.gpu) #context
   ctx = mx.gpu(args.gpu) if mx.context.num_gpus() else mx.cpu(args.gpu)
   nets = []
-  vec = args.model.split(',')
-  prefix = args.model.split(',')[0]
+  vec = args.model.split(',') #模型列表,如: ['../models/model-r50-am-lfw/']
+  
+  prefix = args.model.split(',')[0] #模型所在文件,如: ../models/model-r50-am-lfw/
+
   epochs = []
   if len(vec)==1:
-    pdir = os.path.dirname(prefix)
+    pdir = os.path.dirname(prefix) #../models/model-r50-am-lfw
+
     for fname in os.listdir(pdir):
       if not fname.endswith('.params'):
         continue
       _file = os.path.join(pdir, fname)
+      # print(_file)
       if _file.startswith(prefix):
+        # print('yes')
         epoch = int(fname.split('.')[0].split('-')[1])
+        print(epoch)
         epochs.append(epoch)
     epochs = sorted(epochs, reverse=True)
     if len(args.max)>0:
@@ -544,7 +678,11 @@ if __name__ == '__main__':
 
   else:
     epochs = [int(x) for x in vec[1].split('|')]
+  # print(epochs) #[0]
   print('model number', len(epochs))
+
+  '''加载模型'''
+  print('Loading Model...')
   time0 = datetime.datetime.now()
   for epoch in epochs:
     print('loading',prefix, epoch)
@@ -553,7 +691,6 @@ if __name__ == '__main__':
     all_layers = sym.get_internals()
     sym = all_layers['fc1_output']
     model = mx.mod.Module(symbol=sym, context=ctx, label_names = None)
-    #model.bind(data_shapes=[('data', (args.batch_size, 3, image_size[0], image_size[1]))], label_shapes=[('softmax_label', (args.batch_size,))])
     model.bind(data_shapes=[('data', (args.batch_size, 3, image_size[0], image_size[1]))])
     model.set_params(arg_params, aux_params)
     nets.append(model)
@@ -561,16 +698,22 @@ if __name__ == '__main__':
   diff = time_now - time0
   print('model loading time', diff.total_seconds())
 
-  ver_list = []
-  ver_name_list = []
-  for name in args.target.split(','):
-    path = os.path.join(args.data_dir,name+".bin")
+
+  ver_list = [] #存储数据和标签
+  ver_name_list = [] #verification 数据集列表
+  # pdb.set_trace()
+  for name in args.target.split(','): #遍历测试文件
+    path = os.path.join(args.data_dir,name+".bin") #模型所在文件: ../datasets/lfw.bin
+
     if os.path.exists(path):
       print('loading.. ', name)
-      data_set = load_bin(path, image_size)
+      data_set = load_bin(path, image_size) # data_set: (data_list, issame_list)
       ver_list.append(data_set)
       ver_name_list.append(name)
-
+  
+  # print(ver_list)
+  # sys.exit()
+  # print(ver_list)
   if args.mode==0:
     for i in range(len(ver_list)):
       results = []
@@ -580,6 +723,10 @@ if __name__ == '__main__':
         print('[%s]Accuracy: %1.5f+-%1.5f' % (ver_name_list[i], acc1, std1))
         print('[%s]Accuracy-Flip: %1.5f+-%1.5f' % (ver_name_list[i], acc2, std2))
         results.append(acc2)
+      with open('result_com.txt', 'a') as f:
+        f.writelines(str(len(ver_list[0][1])))
+        f.writelines('\n')
+        f.writelines('*'*50+str(args.target) + '*'*50 +'\n')
       print('Max of [%s] is %1.5f' % (ver_name_list[i], np.max(results)))
   elif args.mode==1:
     model = nets[0]

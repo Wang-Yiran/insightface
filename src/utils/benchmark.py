@@ -29,7 +29,8 @@ def ch_dev(arg_params, aux_params, ctx):
 
 
 def main(args):
-  ctx = mx.gpu(args.gpu)
+  # ctx = mx.gpu(args.gpu)
+  ctx = mx.gpu(args.gpu) if mx.context.num_gpus() else mx.cpu(args.gpu)
   args.ctx_num = 1
   prop = face_image.load_property(args.data)
   image_size = prop.image_size

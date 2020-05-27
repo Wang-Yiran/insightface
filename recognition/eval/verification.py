@@ -525,7 +525,8 @@ if __name__ == '__main__':
   #image_size = prop.image_size
   image_size = [112,112]
   print('image_size', image_size)
-  ctx = mx.gpu(args.gpu)
+  # ctx = mx.gpu(args.gpu)
+  ctx = mx.gpu(args.gpu) if mx.context.num_gpus() else mx.cpu(args.gpu)
   nets = []
   vec = args.model.split(',')
   prefix = args.model.split(',')[0]
